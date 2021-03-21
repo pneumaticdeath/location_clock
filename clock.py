@@ -115,6 +115,10 @@ class Clock(object):
                self.servos.servo[num].angle = location.angle
                time.sleep(1)
 
+       for num in servo_numbers:
+           self.log.debug('Resetting servo {0} to 90'.format(num))
+           self.servos.servo[num].angle = 90
+
     def loop(self):
         pass
 
