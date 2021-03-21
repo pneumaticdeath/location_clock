@@ -1,0 +1,61 @@
+[general]
+locationProvider = owntracks
+locationBroker = mqtt
+
+[servos]
+channels = 16
+servo0MinPW = 568
+servo0MaxPW = 2250
+servo1MinPW = 568
+servo1MaxPW = 2312
+
+[mqtt]
+hostname = mqtt.example.com
+port = 8883
+user = user
+password = sUp3rSekreT
+
+[locations]
+travelingAngle = 90
+lostAngle = 30
+mortalPerilAngle = 180
+unknownAngle = 170
+location0 = home
+location0Angle = 40
+location0Pattern = "home"
+location1 = johns_work
+location1Angle = 160
+location1Pattern = "johns work"
+location2 = park
+location2Angle = 60
+location2Pattern = "\Wpark\W"
+location3 = school
+location3Angle = 50
+location3Pattern = "\Wschool\W"
+location4 = janes_work
+location4Angle = 140
+location4Pattern = "janes work"
+location5 = johns_parents
+location5Angle = 120
+location5Pattern = "johns parents"
+location6 = janes_parents
+location6Angle = 100
+location6Pattern = "janes parents"
+location7 = shopping
+location7Angle = 80
+location7Pattern = "\Wtarget\W|\Wgrocery\W|\Wsafeway\W|\Wluckys\W|\Wtrader joes\W|\Wnob hill\W|\Wraleys\W"
+location8 = berkeley
+location8Angle = 150
+location8Pattern = "berkeley"
+
+[person0]
+name = John Doe
+username = john
+deviceID = ".*"
+servo = 0
+
+[person1]
+name = Jane Doe
+username = jane
+deviceID = ".*"
+servo = 1
