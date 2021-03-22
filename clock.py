@@ -132,8 +132,9 @@ class Clock(object):
         if 'tls' in self.config['mqtt'] and self.config['mqtt']['tls'] == 'true':
             self.broker.tls_set()
 
-        if 'username' in self.config['mqtt'] and 'password' in self.config['mqtt']:
-            self.broker.username_pw_set(self.config['mqtt']['username'], self.config['mqtt']['password'])
+        if 'user' in self.config['mqtt'] and 'password' in self.config['mqtt']:
+            self.log.debug('Connecting as user {0}'.format(self.config['mqtt']['user']))
+            self.broker.username_pw_set(self.config['mqtt']['user'], self.config['mqtt']['password'])
 
         self.broker.connect(self.config['mqtt']['hostname'], int(self.config['mqtt']['port']))
 
