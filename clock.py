@@ -9,19 +9,24 @@ import paho.mqtt.client as mqtt
 import re
 import time
 
+
 class Location(object):
+    """Object representing a location on the clockface, and which event patterns should match it"""
     def __init__(self, name, pattern, angle):
+        self.log = logging.getLogger(self.__class__.__name__)
         self.name = name
         self.pattern = pattern
         self.angle = angle
 
     def matches(self, region_name):
+        self.log.debug('Seeing if pattern {0} matches region {1}'.format(repr(self.pattern), repr(region_name)))
         if self.pattern is not None:
             return re.search(self.pattern, region_name)
         return False
 
 
 class Locations(object):
+    """Container for all the locations"""
     def __init__(self, config):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config = config
@@ -61,11 +66,13 @@ class Locations(object):
 
 
 class Person(object):
+    """Representation of a person to be tracked"""
     def __init__(self, name, user, device, servo):
         self.name = name
         self.user = user
         self.device = device,
         self.servo = servo
+
 
 class Clock(object):
     def __init__(self, configFilePath):
@@ -130,6 +137,7 @@ class Clock(object):
         self.broker.on_message = self.onBrokerMessage
 
         if 'tls' in self.config['mqtt'] and self.config['mqtt']['tls'] == 'true':
+            self.log.debug('Setting TLS encryption on for MQTT')
             self.broker.tls_set()
 
         if 'user' in self.config['mqtt'] and 'password' in self.config['mqtt']:
@@ -154,8 +162,10 @@ class Clock(object):
         ident = '{0}/{1}'.format(user, device)
         person = None
         for pattern in self.people.keys():
-            if re.match(pattern, ident):
+            self.log.debug('Checking to see if pattern "{0}" matches identifier "{1}"'.format(pattern, ident))
+            if re.search(pattern, ident):
                 person = self.people[pattern]
+                self.log.info('Message looks like it is from {0}'.format(person.name))
                 break
         if person is None:
             self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
@@ -172,6 +182,7 @@ class Clock(object):
         self.servos.servo[person.servo].angle = loc.angle
 
     def loop(self):
+        # self.log.debug('Starting loop')
         self.broker.loop()
 
 def main():
