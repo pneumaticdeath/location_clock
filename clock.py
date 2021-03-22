@@ -75,9 +75,10 @@ class Person(object):
 
 
 class Clock(object):
-    def __init__(self, configFilePath):
+    def __init__(self, configFilePath, servoTest=False):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config_file_path = configFilePath
+        self.servo_test = servoTest
         self.initialize()
         self.running = True
 
@@ -85,7 +86,8 @@ class Clock(object):
         self.readConfig()
         self.setupPeople()
         self.setupServos()
-        self.startupTest()
+        if self.servo_test:
+            self.startupTest()
         self.setupMQTT()
 
     def readConfig(self):
@@ -110,24 +112,24 @@ class Clock(object):
             self.servos.servo[num].set_pulse_width_range(min_pulse_width, max_pulse_width)
 
     def startupTest(self):
-       servo_numbers = [person.servo for person in self.people.values()]
+        servo_numbers = [person.servo for person in self.people.values()]
 
-       self.log.info('Sweep tests for all servos')
-       for angle in [0, 90, 180]:
+        self.log.info('Sweep tests for all servos')
+        for angle in [0, 90, 180]:
             for num in servo_numbers:
-                self.log.debug('Angle {0} for servo {1}'.format(angle, num))
-                self.servos.servo[num].angle = angle
-                time.sleep(1.5)
+                    self.log.debug('Angle {0} for servo {1}'.format(angle, num))
+                    self.servos.servo[num].angle = angle
+                    time.sleep(0.5)
 
-       for location in self.locations:
-           for num in servo_numbers:
-               self.log.info('Testing pointing servo {0} to {1} at angle {2}'.format(num, location.name, location.angle))
-               self.servos.servo[num].angle = location.angle
-               time.sleep(1)
+        for location in self.locations:
+            for num in servo_numbers:
+                self.log.info('Testing pointing servo {0} to {1} at angle {2}'.format(num, location.name, location.angle))
+                self.servos.servo[num].angle = location.angle
+            time.sleep(1)
 
-       for num in servo_numbers:
-           self.log.debug('Resetting servo {0} to 90'.format(num))
-           self.servos.servo[num].angle = 90
+        for num in servo_numbers:
+            self.log.debug('Resetting servo {0} to 90'.format(num))
+            self.servos.servo[num].angle = 90
 
     def setupMQTT(self):
         self.log.info('Initializing MQTT broker connection')
@@ -189,6 +191,7 @@ def main():
     parser = argparse.ArgumentParser('clock.py')
     parser.add_argument('--debug', action='store_true', help='Debugging output')
     parser.add_argument('--config', default='config.ini', help='Config file')
+    parser.add_argument('--servo-test', action='store_true', help='Run servo test sequence')
 
     args = parser.parse_args()
 
@@ -198,7 +201,7 @@ def main():
 
     logging.basicConfig(level=level)
 
-    clock = Clock(args.config)
+    clock = Clock(args.config, args.servo_test)
 
     while clock.running:
         clock.loop()
