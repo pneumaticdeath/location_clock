@@ -3,7 +3,9 @@
 from adafruit_servokit import ServoKit
 import argparse
 from configparser import ConfigParser
+import json
 import logging
+import paho.mqtt.client as mqtt
 import re
 import time
 
@@ -70,13 +72,14 @@ class Clock(object):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config_file_path = configFilePath
         self.initialize()
-        self.loop()
+        self.running = True
 
     def initialize(self):
         self.readConfig()
         self.setupPeople()
         self.setupServos()
         self.startupTest()
+        self.setupMQTT()
 
     def readConfig(self):
         self.config = ConfigParser()
@@ -89,7 +92,7 @@ class Clock(object):
         self.people = {}
         for person in people:
             section = self.config[person]
-            self.people[section['username']] = Person(section['name'], section['username'], section['deviceid'], int(section['servo']))
+            self.people[section['username']+'/'+section['deviceid']] = Person(section['name'], section['username'], section['deviceid'], int(section['servo']))
 
     def setupServos(self):
         self.servos = ServoKit(channels=int(self.config['servos']['channels']))
@@ -119,8 +122,56 @@ class Clock(object):
            self.log.debug('Resetting servo {0} to 90'.format(num))
            self.servos.servo[num].angle = 90
 
+    def setupMQTT(self):
+        self.log.info('Initializing MQTT broker connection')
+        self.broker_connected = False
+        self.broker = mqtt.Client()
+        self.broker.on_connect = self.onBrokerConnect
+        self.broker.on_message = self.onBrokerMessage
+
+        if 'tls' in self.config['mqtt'] and self.config['mqtt']['tls'] == 'true':
+            self.broker.tls_set()
+
+        if 'username' in self.config['mqtt'] and 'password' in self.config['mqtt']:
+            self.broker.username_pw_set(self.config['mqtt']['username'], self.config['mqtt']['password'])
+
+        self.broker.connect(self.config['mqtt']['hostname'], int(self.config['mqtt']['port']))
+
+    def onBrokerConnect(self, client, userdata, flags, rc):
+        self.log.info('MQTT broker connected with code {0}'.format(str(rc)))
+
+        # will resubscribe on reconnect
+        client.subscribe('owntracks/+/+/event')
+
+    def onBrokerMessage(self, client, userdata, msg):
+        self.log.debug('Got message topic {0} with payload {1}'.format(msg.topic, msg.payload))
+        event = json.loads(msg.payload)
+        if event['_type'] != 'transition':
+            return
+
+        owntracks, user, device, msgtype = msg.topic.split('/')
+        ident = '{0}/{1}'.format(user, device)
+        person = None
+        for pattern in self.people.keys():
+            if re.match(pattern, ident):
+                person = self.people[pattern]
+                break
+        if person is None:
+            self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
+            return
+        loc = self.locations.getLoc(event)
+        self.setLoc(person, loc)
+
+    def setLoc(self, person, loc):
+        if loc.name == 'traveling':
+            self.log.info('{0} is traveling'.format(person.name))
+        else:
+            self.log.info('{0} is in {1}'.format(person.name, loc.name))
+
+        self.servos.servo[person.servo].angle = loc.angle
+
     def loop(self):
-        pass
+        self.broker.loop()
 
 def main():
     parser = argparse.ArgumentParser('clock.py')
@@ -136,6 +187,9 @@ def main():
     logging.basicConfig(level=level)
 
     clock = Clock(args.config)
+
+    while clock.running:
+        clock.loop()
 
 if __name__ == '__main__':
     main()

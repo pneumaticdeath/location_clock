@@ -12,6 +12,7 @@ servo1MaxPW = 2312
 [mqtt]
 hostname = mqtt.example.com
 port = 8883
+tls = true
 user = user
 password = sUp3rSekreT
 
