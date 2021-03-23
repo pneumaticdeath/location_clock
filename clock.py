@@ -75,8 +75,11 @@ class Person(object):
 
 
 class Clock(object):
-    def __init__(self, configFilePath, servoTest=False):
+    def __init__(self, configFilePath, servoTest=False, min_reconnect_interval=1, max_reconnect_interval=120):
         self.log = logging.getLogger(self.__class__.__name__)
+        self.min_reconnect_interval = min_reconnect_interval
+        self.max_reconnect_interval = max_reconnect_interval
+        self.reconnect_interval = self.min_reconnect_interval
         self.config_file_path = configFilePath
         self.servo_test = servoTest
         self.initialize()
@@ -161,8 +164,11 @@ class Clock(object):
     def onBrokerDisconnect(self, client, userdata, rc):
         self.broker_connected = False
         if rc != 0:
-            self.warning('MQTT broker disconnected with status {0}'.format(rc))
-            self.broker.reconnect()
+            self.log.warning('MQTT broker disconnected with status {0}'.format(rc))
+            try:
+                self.broker.reconnect()
+            except Exception as e:
+                self.log.error('While trying to reconnect, got exception {0}'.format(repr(e)))
         else:
             self.info('MQTT broker disconnected as expected')
 
@@ -211,8 +217,18 @@ class Clock(object):
     def loop(self):
         # self.log.debug('Starting loop')
         rc = self.broker.loop()
-        if rc != 0:
+        if rc == mqtt.MQTT_ERR_CONN_LOST:
+            self.log.error('Connection lost, trying to reconnect')
+            try:
+                self.broker.reconnect()
+            except Exception as e:
+                self.log.error('Caught exception {0}'.format(repr(e)))
+                time.sleep(self.reconnect_interval)
+                self.reconnect_interval = min(self.max_reconnect_interval, 2*self.reconnect_interval)
+        elif rc != 0:
             self.log.warning('Loop returned error code {0}'.format(rc))
+        else:
+            self.reconnect_interval = self.min_reconnect_interval
 
 def main():
     parser = argparse.ArgumentParser('clock.py')
