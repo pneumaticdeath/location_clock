@@ -199,7 +199,7 @@ def main():
     if args.debug:
         level = logging.DEBUG
 
-    logging.basicConfig(level=level)
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
     clock = Clock(args.config, args.servo_test)
 
