@@ -134,9 +134,11 @@ class Clock(object):
     def setupMQTT(self):
         self.log.info('Initializing MQTT broker connection')
         self.broker_connected = False
+        self.broker_log = logging.getLogger('MQTT')
         self.broker = mqtt.Client()
         self.broker.on_connect = self.onBrokerConnect
         self.broker.on_disconnect = self.onBrokerDisconnect
+        self.broker.on_log = self.onBrokerLog
         self.broker.on_message = self.onBrokerMessage
 
         if 'tls' in self.config['mqtt'] and self.config['mqtt']['tls'] == 'true':
@@ -163,6 +165,19 @@ class Clock(object):
             self.broker.reconnect()
         else:
             self.info('MQTT broker disconnected as expected')
+
+    def onBrokerLog(self, client, userdata, level, buf):
+        if level == mqtt.MQTT_LOG_DEBUG:
+            self.broker_log.debug(buf)
+        elif level in [mqtt.MQTT_LOG_INFO, mqtt.MQTT_LOG_NOTICE]:
+            self.broker_log.info(buf)
+        elif level == mqtt.MQTT_LOG_WARNING:
+            self.broker_log.warning(buf)
+        elif level == mqtt.MQTT_LOG_ERR:
+            self.broker_log.error(buf)
+        else:
+            self.log.warning('Unknown MQTT log level {0}'.format(level))
+            self.broker_log.warning(buf)
 
     def onBrokerMessage(self, client, userdata, msg):
         self.log.debug('Got message topic {0} with payload {1}'.format(msg.topic, msg.payload))
@@ -195,7 +210,9 @@ class Clock(object):
 
     def loop(self):
         # self.log.debug('Starting loop')
-        self.broker.loop()
+        rc = self.broker.loop()
+        if rc != 0:
+            self.log.warning('Loop returned error code {0}'.format(rc))
 
 def main():
     parser = argparse.ArgumentParser('clock.py')
@@ -209,7 +226,7 @@ def main():
     if args.debug:
         level = logging.DEBUG
 
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
+    logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s', level=level)
 
     clock = Clock(args.config, args.servo_test)
 
