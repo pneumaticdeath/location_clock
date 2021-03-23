@@ -136,6 +136,7 @@ class Clock(object):
         self.broker_connected = False
         self.broker = mqtt.Client()
         self.broker.on_connect = self.onBrokerConnect
+        self.broker.on_disconnect = self.onBrokerDisconnect
         self.broker.on_message = self.onBrokerMessage
 
         if 'tls' in self.config['mqtt'] and self.config['mqtt']['tls'] == 'true':
@@ -149,10 +150,19 @@ class Clock(object):
         self.broker.connect(self.config['mqtt']['hostname'], int(self.config['mqtt']['port']))
 
     def onBrokerConnect(self, client, userdata, flags, rc):
+        self.broker_connected = True
         self.log.info('MQTT broker connected with code {0}'.format(str(rc)))
 
         # will resubscribe on reconnect
         client.subscribe('owntracks/+/+/event')
+
+    def onBrokerDisconnect(self, client, userdata, rc):
+        self.broker_connected = False
+        if rc != 0:
+            self.warning('MQTT broker disconnected with status {0}'.format(rc))
+            self.broker.reconnect()
+        else:
+            self.info('MQTT broker disconnected as expected')
 
     def onBrokerMessage(self, client, userdata, msg):
         self.log.debug('Got message topic {0} with payload {1}'.format(msg.topic, msg.payload))
