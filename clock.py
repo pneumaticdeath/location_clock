@@ -7,6 +7,7 @@ import json
 import logging
 import paho.mqtt.client as mqtt
 import re
+import signal
 import time
 
 
@@ -92,13 +93,26 @@ class Clock(object):
         if self.servo_test:
             self.startupTest()
         self.setupMQTT()
+        signal.signal(signal.SIGHUP, self.hupHandler)
+
+    def hupHandler(self, signum, frame):
+        self.log.info('Got HUP, reinitializing')
+        if self.broker_connected:
+            self.log.debug('Disconnecting from broker')
+            self.broker.disconnect()
+        self.readConfig()
+        self.setupPeople()
+        self.setupServos()
+        # self.setupMQTT()
 
     def readConfig(self):
+        self.log.debug('reading config file from {0}'.format(self.config_file_path))
         self.config = ConfigParser()
         self.config.read(self.config_file_path)
         self.locations = Locations(self.config)
 
     def setupPeople(self):
+        self.log.debug('Setting up people')
         people = list(filter(lambda x: re.match('person\d+$', x), self.config.sections()))
         people.sort()
         self.people = {}
@@ -107,6 +121,7 @@ class Clock(object):
             self.people[section['username']+'/'+section['deviceid']] = Person(section['name'], section['username'], section['deviceid'], int(section['servo']))
 
     def setupServos(self):
+        self.log.debug('Setting up servos')
         self.servos = ServoKit(channels=int(self.config['servos']['channels']))
         for person in self.people.values():
             num = person.servo
@@ -170,7 +185,7 @@ class Clock(object):
             except Exception as e:
                 self.log.error('While trying to reconnect, got exception {0}'.format(repr(e)))
         else:
-            self.info('MQTT broker disconnected as expected')
+            self.log.info('MQTT broker disconnected as expected')
 
     def onBrokerLog(self, client, userdata, level, buf):
         if level == mqtt.MQTT_LOG_DEBUG:
