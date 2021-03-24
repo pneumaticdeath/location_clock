@@ -88,6 +88,7 @@ class Clock(object):
 
     def initialize(self):
         self.readConfig()
+        self.setupLocations()
         self.setupPeople()
         self.setupServos()
         if self.servo_test:
@@ -101,14 +102,18 @@ class Clock(object):
             self.log.debug('Disconnecting from broker')
             self.broker.disconnect()
         self.readConfig()
+        self.setupLocations()
         self.setupPeople()
         self.setupServos()
-        # self.setupMQTT()
+        # We DON'T want to rerun the MQTT setup.. it will reconnect automatically
 
     def readConfig(self):
         self.log.debug('reading config file from {0}'.format(self.config_file_path))
         self.config = ConfigParser()
         self.config.read(self.config_file_path)
+
+    def setupLocations(self):
+        self.log.debug('Setting up locations')
         self.locations = Locations(self.config)
 
     def setupPeople(self):
