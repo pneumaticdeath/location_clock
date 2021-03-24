@@ -76,6 +76,7 @@ class Person(object):
 
 
 class Clock(object):
+    """Main clock object.  Defines the behavior of the clock as a whole."""
     def __init__(self, configFilePath, servoTest=False, min_reconnect_interval=1, max_reconnect_interval=120):
         self.log = logging.getLogger(self.__class__.__name__)
         self.min_reconnect_interval = min_reconnect_interval
@@ -120,10 +121,14 @@ class Clock(object):
         self.log.debug('Setting up people')
         people = list(filter(lambda x: re.match('person\d+$', x), self.config.sections()))
         people.sort()
+        self.log.debug('Found {0} distinct people defined in config'.format(len(people)))
         self.people = {}
         for person in people:
             section = self.config[person]
-            self.people[section['username']+'/'+section['deviceid']] = Person(section['name'], section['username'], section['deviceid'], int(section['servo']))
+            self.people[section['username']+'/'+section['deviceid']] = Person(section['name'],
+                                                                              section['username'],
+                                                                              section['deviceid'],
+                                                                              int(section['servo']))
 
     def setupServos(self):
         self.log.debug('Setting up servos')
@@ -218,7 +223,7 @@ class Clock(object):
             self.log.debug('Checking to see if pattern "{0}" matches identifier "{1}"'.format(pattern, ident))
             if re.search(pattern, ident):
                 person = self.people[pattern]
-                self.log.info('Message looks like it is from {0}'.format(person.name))
+                self.log.debug('Message looks like it is from {0}'.format(person.name))
                 break
         if person is None:
             self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
