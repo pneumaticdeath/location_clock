@@ -132,12 +132,17 @@ class Clock(object):
 
     def setupServos(self):
         self.log.debug('Setting up servos')
-        self.servos = ServoKit(channels=int(self.config['servos']['channels']))
-        for person in self.people.values():
-            num = person.servo
-            min_pulse_width = int(self.config['servos']['servo{0}minpw'.format(num)])
-            max_pulse_width = int(self.config['servos']['servo{0}maxpw'.format(num)])
-            self.servos.servo[num].set_pulse_width_range(min_pulse_width, max_pulse_width)
+        section = self.config['servos']
+        channels=int(section['channels'])
+        self.servos = ServoKit(channels=channels)
+        for num in range(channels):
+            min_pulse_width_name = 'servo{0}minpw'.format(num)
+            max_pulse_width_name = 'servo{0}maxpw'.format(num)
+            if min_pulse_width_name in section and max_pulse_width_name in section:
+                min_pulse_width = int(section[min_pulse_width_name])
+                max_pulse_width = int(section[max_pulse_width_name])
+                self.log.debug('Setting custom pulse width range to ({0}, {1}) on servo {2}'.format(min_pulse_width, max_pulse_width, num))
+                self.servos.servo[num].set_pulse_width_range(min_pulse_width, max_pulse_width)
 
     def startupTest(self):
         servo_numbers = [person.servo for person in self.people.values()]
@@ -147,13 +152,13 @@ class Clock(object):
             for num in servo_numbers:
                     self.log.debug('Angle {0} for servo {1}'.format(angle, num))
                     self.servos.servo[num].angle = angle
-                    time.sleep(0.5)
+                    time.sleep(1.5)
 
         for location in self.locations:
             for num in servo_numbers:
                 self.log.info('Testing pointing servo {0} to {1} at angle {2}'.format(num, location.name, location.angle))
                 self.servos.servo[num].angle = location.angle
-            time.sleep(1)
+                time.sleep(1)
 
         for num in servo_numbers:
             self.log.debug('Resetting servo {0} to 90'.format(num))
