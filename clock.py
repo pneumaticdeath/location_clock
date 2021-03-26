@@ -8,6 +8,7 @@ import logging
 import paho.mqtt.client as mqtt
 import re
 import signal
+import sqlite3
 import time
 
 
@@ -32,9 +33,9 @@ class Locations(object):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config = config
         self.traveling = Location('traveling', None, self.getConfigInt('travelingangle'))
-        self.unknown = Location('unknown', None, self.getConfigInt('unknownangle'))
+        self.unknown = Location('in an unknown location', None, self.getConfigInt('unknownangle'))
         self.lost = Location('lost', None, self.getConfigInt('lostangle'))
-        self.mortal_peril = Location('mortal peril', None, self.getConfigInt('mortalperilangle'))
+        self.mortal_peril = Location('in mortal peril', None, self.getConfigInt('mortalperilangle'))
         locations = list(filter(lambda x: re.match('location\d+$', x), self.config['locations'].keys()))
         locations.sort()
         self.locations = []
@@ -94,6 +95,7 @@ class Clock(object):
         self.setupServos()
         if self.servo_test:
             self.startupTest()
+        self.setupDatabase()
         self.setupMQTT()
         signal.signal(signal.SIGHUP, self.hupHandler)
 
@@ -106,6 +108,9 @@ class Clock(object):
         self.setupLocations()
         self.setupPeople()
         self.setupServos()
+        if self.servo_test:
+            self.startupTest()
+        self.setupDatabase()
         # We DON'T want to rerun the MQTT setup.. it will reconnect automatically
 
     def readConfig(self):
@@ -143,6 +148,13 @@ class Clock(object):
                 max_pulse_width = int(section[max_pulse_width_name])
                 self.log.debug('Setting custom pulse width range to ({0}, {1}) on servo {2}'.format(min_pulse_width, max_pulse_width, num))
                 self.servos.servo[num].set_pulse_width_range(min_pulse_width, max_pulse_width)
+
+    def setupDatabase(self):
+        dbfile = 'state.sqlite'
+        if 'database' in self.config and 'statefile' in self.config['database']:
+            dbfile = self.config['database']['statefile']
+        self.state_db = sqlite3.connect(dbfile)
+        self.setStateFromDB()
 
     def startupTest(self):
         servo_numbers = [person.servo for person in self.people.values()]
@@ -223,6 +235,15 @@ class Clock(object):
 
         owntracks, user, device, msgtype = msg.topic.split('/')
         ident = '{0}/{1}'.format(user, device)
+        person = self.findPerson(ident)
+        if person is None:
+            self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
+            return
+        loc = self.locations.getLoc(event)
+        self.setLoc(person, loc)
+        self.saveState(ident, loc.name, loc.angle)
+
+    def findPerson(self, ident):
         person = None
         for pattern in self.people.keys():
             self.log.debug('Checking to see if pattern "{0}" matches identifier "{1}"'.format(pattern, ident))
@@ -230,19 +251,73 @@ class Clock(object):
                 person = self.people[pattern]
                 self.log.debug('Message looks like it is from {0}'.format(person.name))
                 break
-        if person is None:
-            self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
-            return
-        loc = self.locations.getLoc(event)
-        self.setLoc(person, loc)
+        return person
 
     def setLoc(self, person, loc):
-        if loc.name == 'traveling':
-            self.log.info('{0} is traveling'.format(person.name))
-        else:
-            self.log.info('{0} is in {1}'.format(person.name, loc.name))
+        self.log.info('{0} is {1}'.format(person.name, loc.name))
 
         self.servos.servo[person.servo].angle = loc.angle
+
+    def setStateFromDB(self):
+        self.log.debug('Restoring location info from state db')
+        try:
+            results = self.state_db.execute('SELECT ident, location_name, location_angle, timestamp FROM locations')
+            for row in results:
+                ident, loc_name, loc_angle, timestamp = row
+                person = self.findPerson(ident)
+                if person is not None:
+                    self.log.info('{0} was last {1} (angle {2}) at {3}'.format(person.name, loc_name, loc_angle, 
+                                                                                time.asctime(time.localtime(timestamp))))
+                    self.servos.servo[person.servo].angle = loc_angle
+                else:
+                    self.log.error('Unable to find person with ident {0}'.format(ident))
+        except sqlite3.OperationalError as e:
+            if 'no such table' in str(e):
+                self.createLocationsTable()
+            else:
+                self.log.error('Got unexpected error from database: {0}'.format(repr(e)))
+
+    def saveState(self, ident, name, angle, timestamp=None):
+        if timestamp is None:
+            timestamp = time.time()
+
+        try_again = True
+        attempt_counter = 0
+        max_attempts = 3
+
+        while try_again and attempt_counter < max_attempts:
+            attempt_counter += 1
+            try:
+                self.state_db.execute('INSERT INTO locations(ident, location_name, location_angle, timestamp) VALUES (?, ?, ?, ?);',
+                                        [ident, name, angle, timestamp])
+                self.state_db.commit();
+                try_again = False
+            except Exception as e:
+                if 'no such table' in str(e):
+                    self.createLocationsTable()
+                else:
+                    self.log.error('Got {0} while trying to save state'.format(repr(e)))
+                    try_again = False
+
+        if attempt_counter >= max_attempts:
+            self.log.error('Unable to save state after {0} attempts'.format(attempt_counter))
+        else:
+            self.log.info('Saved state for {0} on attempt {1}'.format(ident, attempt_counter))
+
+    def createLocationsTable(self):
+        self.log.info('Attempting to create locations table in state database');
+        try:
+            self.state_db.execute("""
+                CREATE TABLE locations (
+                    ident TEXT PRIMARY KEY ON CONFLICT REPLACE,
+                    location_name TEXT,
+                    location_angle INT,
+                    timestamp INT
+                );""")
+            return True
+        except Exception as e:
+            self.log.error('Unable to create locations table: {0}'.foramt(repr(e)))
+            return False
 
     def loop(self):
         # self.log.debug('Starting loop')
