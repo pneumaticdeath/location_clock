@@ -266,7 +266,7 @@ class Clock(object):
                 ident, loc_name, loc_angle, timestamp = row
                 person = self.findPerson(ident)
                 if person is not None:
-                    self.log.info('{0} was last {1} (angle {2}) at {3}'.format(person.name, loc_name, loc_angle, 
+                    self.log.info('{0} was last seen {1} (angle {2}) at {3}'.format(person.name, loc_name, loc_angle, 
                                                                                 time.asctime(time.localtime(timestamp))))
                     self.servos.servo[person.servo].angle = loc_angle
                 else:
