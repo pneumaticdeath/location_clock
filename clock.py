@@ -302,7 +302,7 @@ class Clock(object):
         if attempt_counter >= max_attempts:
             self.log.error('Unable to save state after {0} attempts'.format(attempt_counter))
         else:
-            self.log.info('Saved state for {0} on attempt {1}'.format(ident, attempt_counter))
+            self.log.debug('Saved state for {0} on attempt {1}'.format(ident, attempt_counter))
 
     def createLocationsTable(self):
         self.log.info('Attempting to create locations table in state database');
