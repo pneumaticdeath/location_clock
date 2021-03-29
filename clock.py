@@ -308,15 +308,30 @@ class Clock(object):
         self.log.info('Attempting to create locations table in state database');
         try:
             self.state_db.execute("""
-                CREATE TABLE locations (
+                CREATE TABLE IF NOT EXISTS locations (
                     ident TEXT PRIMARY KEY ON CONFLICT REPLACE,
                     location_name TEXT,
                     location_angle INT,
                     timestamp INT
                 );""")
+            self.state_db.execute("""
+                CREATE TABLE IF NOT EXISTS location_history (
+                    ident TEXT,
+                    location_name TEXT,
+                    location_angle INT,
+                    timestamp INT
+                );""")
+            self.state_db.execute("""
+                CREATE TRIGGER IF NOT EXISTS save_location_history 
+                    BEFORE INSERT ON locations
+                    FOR EACH ROW
+                    BEGIN
+                        INSERT INTO location_history(ident, location_name, location_angle, timestamp)
+                            VALUES (NEW.ident, NEW.location_name, NEW.location_angle, NEW.timestamp);
+                    END;""")
             return True
         except Exception as e:
-            self.log.error('Unable to create locations table: {0}'.foramt(repr(e)))
+            self.log.error('Unable to create tables: {0}'.format(repr(e)))
             return False
 
     def loop(self):
