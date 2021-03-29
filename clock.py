@@ -322,7 +322,7 @@ class Clock(object):
                     timestamp INT
                 );""")
             self.state_db.execute("""
-                CREATE TRIGGER IF NOT EXISTS save_location_history 
+                CREATE TRIGGER IF NOT EXISTS save_location_history
                     BEFORE INSERT ON locations
                     FOR EACH ROW
                     BEGIN
