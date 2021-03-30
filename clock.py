@@ -307,31 +307,45 @@ class Clock(object):
     def createLocationsTable(self):
         self.log.info('Attempting to create locations table in state database');
         try:
-            self.state_db.execute("""
-                CREATE TABLE IF NOT EXISTS locations (
-                    ident TEXT PRIMARY KEY ON CONFLICT REPLACE,
-                    location_name TEXT,
-                    location_angle INT,
-                    timestamp INT
-                );""")
-            self.state_db.execute("""
+            sql_statements = [
+                """
                 CREATE TABLE IF NOT EXISTS location_history (
                     ident TEXT,
                     location_name TEXT,
                     location_angle INT,
                     timestamp INT
-                );""")
-            self.state_db.execute("""
+                );""",
+                """
+                CREATE INDEX IF NOT EXISTS location_history_ident_ts 
+                    ON location_history(ident, timestamp);
+                """,
+                """
+                CREATE VIEW IF NOT EXISTS latest_ident_update 
+                    AS SELECT ident, max(timestamp) AS timestamp
+                        FROM location_history GROUP BY ident;
+                """,
+                """
+                CREATE VIEW IF NOT EXISTS locations
+                    AS SELECT lh.*
+                        FROM location_history lh
+                        JOIN latest_ident_update liu
+                          ON (lh.ident = liu.ident and lh.timestamp = liu.timestamp);
+                """,
+                """
                 CREATE TRIGGER IF NOT EXISTS save_location_history
-                    BEFORE INSERT ON locations
+                    INSTEAD OF INSERT ON locations
                     FOR EACH ROW
                     BEGIN
                         INSERT INTO location_history(ident, location_name, location_angle, timestamp)
                             VALUES (NEW.ident, NEW.location_name, NEW.location_angle, NEW.timestamp);
-                    END;""")
+                    END;
+                """,
+            ]
+            for stmt in sql_statements:
+                self.state_db.execute(stmt);
             return True
         except Exception as e:
-            self.log.error('Unable to create tables: {0}'.format(repr(e)))
+            self.log.error('Unable to create database: {0}'.format(repr(e)))
             return False
 
     def loop(self):
