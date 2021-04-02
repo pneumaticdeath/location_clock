@@ -241,7 +241,10 @@ class Clock(object):
             return
         loc = self.locations.getLoc(event)
         self.setLoc(person, loc)
-        self.saveState(ident, loc.name, loc.angle)
+        if 'tst' in event:
+            self.saveState(ident, loc.name, loc.angle, event['tst'])
+        else:
+            self.saveState(ident, loc.name, loc.angle)
 
     def findPerson(self, ident):
         person = None
