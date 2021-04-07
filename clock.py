@@ -77,6 +77,11 @@ class Person(object):
 
 
 class Clock(object):
+
+    DEFAULT_SWEEP_INTERVAL = 0.5
+    DEFAULT_LOCATION_INTERVAL = 0.5
+    DEFAULT_DB_FILE = 'state.sqlite'
+
     """Main clock object.  Defines the behavior of the clock as a whole."""
     def __init__(self, configFilePath, servoTest=False, min_reconnect_interval=1, max_reconnect_interval=120):
         self.log = logging.getLogger(self.__class__.__name__)
@@ -150,7 +155,7 @@ class Clock(object):
                 self.servos.servo[num].set_pulse_width_range(min_pulse_width, max_pulse_width)
 
     def setupDatabase(self):
-        dbfile = 'state.sqlite'
+        dbfile = self.DEFAULT_DB_FILE
         if 'database' in self.config and 'statefile' in self.config['database']:
             dbfile = self.config['database']['statefile']
         self.state_db = sqlite3.connect(dbfile)
@@ -159,18 +164,31 @@ class Clock(object):
     def startupTest(self):
         servo_numbers = [person.servo for person in self.people.values()]
 
+        section = self.config['servos']
+
+        if 'sweepinterval' in section:
+            self.sweep_interval = float(section['sweepinterval'])
+        else:
+            self.sweep_interval = self.DEFAULT_SWEEP_INTERVAL
+
+        if 'locationinterval' in section:
+            self.location_interval = float(section['locationinterval'])
+        else:
+            self.location_interval = self.DEFAULT_LOCATION_INTERVAL
+
+
         self.log.info('Sweep tests for all servos')
-        for angle in [0, 90, 180]:
+        for angle in [0, 45, 90, 135, 180]:
             for num in servo_numbers:
                     self.log.debug('Angle {0} for servo {1}'.format(angle, num))
                     self.servos.servo[num].angle = angle
-                    time.sleep(1.5)
+                    time.sleep(self.sweep_interval)
 
         for location in self.locations:
             for num in servo_numbers:
                 self.log.info('Testing pointing servo {0} to {1} at angle {2}'.format(num, location.name, location.angle))
                 self.servos.servo[num].angle = location.angle
-                time.sleep(1)
+                time.sleep(self.location_interval)
 
         for num in servo_numbers:
             self.log.debug('Resetting servo {0} to 90'.format(num))
