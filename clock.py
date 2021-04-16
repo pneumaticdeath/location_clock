@@ -67,13 +67,44 @@ class Locations(object):
             yield x
 
 
+class Pointer(object):
+    """abstraction for the pointing device"""
+    def __init__(self, config, servo):
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.config = config
+        self.servo = servo
+        self.current_angle = round(servo.angle)
+        self.desired_angle = round(servo.angle)
+
+    def pointAt(self, location):
+        self.log.debug('Pointing at {0}'.format(location.name))
+        self.desired_angle = location.angle
+
+    def setAngle(self, angle):
+        self.log.debug('Setting angle to {0}'.format(angle))
+        self.servo.angle = angle
+        self.current_angle = angle
+        self.desired_angle = angle
+
+    def step(self, stepsize=1):
+        if self.current_angle < self.desired_angle:
+            self.current_angle = min(self.desired_angle, self.current_angle + stepsize)
+            self.log.debug('Stepping up {0} degrees to {1}'.format(stepsize, self.current_angle))
+        elif self.current_angle > self.desired_angle:
+            self.current_angle = max(self.desired_angle, self.current_angle - stepsize)
+            self.log.debug('Stepping down {0} degrees to {1}'.format(stepsize, self.current_angle))
+        else:
+            return
+        self.servo.angle = self.current_angle
+
+
 class Person(object):
     """Representation of a person to be tracked"""
-    def __init__(self, name, user, device, servo):
+    def __init__(self, name, user, device, pointer):
         self.name = name
         self.user = user
         self.device = device,
-        self.servo = servo
+        self.pointer = pointer
 
 
 class Clock(object):
@@ -96,8 +127,8 @@ class Clock(object):
     def initialize(self):
         self.readConfig()
         self.setupLocations()
-        self.setupPeople()
         self.setupServos()
+        self.setupPeople()
         if self.servo_test:
             self.startupTest()
         self.setupDatabase()
@@ -111,8 +142,8 @@ class Clock(object):
             self.broker.disconnect()
         self.readConfig()
         self.setupLocations()
-        self.setupPeople()
         self.setupServos()
+        self.setupPeople()
         if self.servo_test:
             self.startupTest()
         self.setupDatabase()
@@ -135,10 +166,11 @@ class Clock(object):
         self.people = {}
         for person in people:
             section = self.config[person]
-            self.people[section['username']+'/'+section['deviceid']] = Person(section['name'],
-                                                                              section['username'],
-                                                                              section['deviceid'],
-                                                                              int(section['servo']))
+            self.people[section['username']+'/'+section['deviceid']] = Person(
+                    section['name'],
+                    section['username'],
+                    section['deviceid'],
+                    Pointer(self.config, self.servos.servo[int(section['servo'])]))
 
     def setupServos(self):
         self.log.debug('Setting up servos')
@@ -162,7 +194,7 @@ class Clock(object):
         self.setStateFromDB()
 
     def startupTest(self):
-        servo_numbers = [person.servo for person in self.people.values()]
+        people = self.people.values()
 
         section = self.config['servos']
 
@@ -179,20 +211,20 @@ class Clock(object):
 
         self.log.info('Sweep tests for all servos')
         for angle in [0, 45, 90, 135, 180]:
-            for num in servo_numbers:
-                    self.log.debug('Angle {0} for servo {1}'.format(angle, num))
-                    self.servos.servo[num].angle = angle
+            for person in people:
+                    self.log.debug('Angle {0} for user {1}'.format(angle,person.name))
+                    person.pointer.setAngle(angle)
                     time.sleep(self.sweep_interval)
 
         for location in self.locations:
-            for num in servo_numbers:
-                self.log.info('Testing pointing servo {0} to {1} at angle {2}'.format(num, location.name, location.angle))
-                self.servos.servo[num].angle = location.angle
+            for person in people:
+                self.log.info('Testing pointing user {0} to {1} at angle {2}'.format(person.name, location.name, location.angle))
+                person.pointer.setAngle(location.angle)
                 time.sleep(self.location_interval)
 
-        for num in servo_numbers:
-            self.log.debug('Resetting servo {0} to 90'.format(num))
-            self.servos.servo[num].angle = 90
+        for person in people:
+            self.log.debug('Resetting user {0} to 90'.format(person.name))
+            person.pointer.setAngle(90)
 
     def setupMQTT(self):
         self.log.info('Initializing MQTT broker connection')
@@ -234,7 +266,8 @@ class Clock(object):
 
     def onBrokerLog(self, client, userdata, level, buf):
         if level == mqtt.MQTT_LOG_DEBUG:
-            self.broker_log.debug(buf)
+            pass
+            # self.broker_log.debug(buf)
         elif level in [mqtt.MQTT_LOG_INFO, mqtt.MQTT_LOG_NOTICE]:
             self.broker_log.info(buf)
         elif level == mqtt.MQTT_LOG_WARNING:
@@ -258,7 +291,8 @@ class Clock(object):
             self.log.warning('Got MQTT msg for unknown user/device "{0}"'.format(ident))
             return
         loc = self.locations.getLoc(event)
-        self.setLoc(person, loc)
+        self.log.info('{0} is {1}'.format(person.name, loc.name))
+        person.pointer.pointAt(loc)
         if 'tst' in event:
             self.saveState(ident, loc.name, loc.angle, event['tst'])
         else:
@@ -274,11 +308,6 @@ class Clock(object):
                 break
         return person
 
-    def setLoc(self, person, loc):
-        self.log.info('{0} is {1}'.format(person.name, loc.name))
-
-        self.servos.servo[person.servo].angle = loc.angle
-
     def setStateFromDB(self):
         self.log.debug('Restoring location info from state db')
         try:
@@ -289,7 +318,7 @@ class Clock(object):
                 if person is not None:
                     self.log.info('{0} was last seen {1} (angle {2}) at {3}'.format(person.name, loc_name, loc_angle, 
                                                                                 time.asctime(time.localtime(timestamp))))
-                    self.servos.servo[person.servo].angle = loc_angle
+                    person.pointer.desired_angle = loc_angle
                 else:
                     self.log.error('Unable to find person with ident {0}'.format(ident))
         except sqlite3.OperationalError as e:
@@ -371,6 +400,8 @@ class Clock(object):
 
     def loop(self):
         # self.log.debug('Starting loop')
+        for person in self.people.values():
+            person.pointer.step()
         rc = self.broker.loop()
         if rc == mqtt.MQTT_ERR_CONN_LOST:
             self.log.error('Connection lost, trying to reconnect')
