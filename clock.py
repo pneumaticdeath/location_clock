@@ -69,6 +69,9 @@ class Locations(object):
 
 class Pointer(object):
     """abstraction for the pointing device"""
+
+    DEFAULT_STEPSIZE = 1
+
     def __init__(self, config, servo):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config = config
@@ -86,7 +89,13 @@ class Pointer(object):
         self.current_angle = angle
         self.desired_angle = angle
 
-    def step(self, stepsize=1):
+    def step(self, stepsize=None):
+        if stepsize is None:
+            if 'stepsize' in self.config['servos']:
+                stepsize = int(self.config['servos']['stepsize'])
+            else:
+                stepsize = self.DEFAULT_STEPSIZE
+
         if self.current_angle < self.desired_angle:
             self.current_angle = min(self.desired_angle, self.current_angle + stepsize)
             self.log.debug('Stepping up {0} degrees to {1}'.format(stepsize, self.current_angle))

@@ -6,6 +6,7 @@ locationBroker = mqtt
 channels = 16
 sweepInterval = 1
 locationInterval = 0.5
+stepSize = 1
 servo0MinPW = 568
 servo0MaxPW = 2250
 servo1MinPW = 568
